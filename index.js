@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const client = new Client({
@@ -14,7 +15,7 @@ const APPROVAL_CHANNEL_ID = '1456634920092045498';
 const VERIFIED_ROLE_ID = '1446859259840036924';
 const ADMIN_ROLE_1 = '1455684787804307590';
 const ADMIN_ROLE_2 = '1442691051990024435';
-const BOT_TOKEN = 'MTQ1NjYyOTQ3OTk4MzAyMjMyOA.G5DjCD.6yTk2dKGoUwZWWaowK64jJAv8ZeqyzxXnh9yjE';
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
 client.on('ready', () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
@@ -67,12 +68,12 @@ client.on('messageCreate', async (message) => {
     // إنشاء الإمبد
     const embed = new EmbedBuilder()
       .setColor('#5865F2')
-      .setTitle('طلب تفعيل')
+      .setTitle('🔔 طلب تفعيل جديد')
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
       .addFields(
-        { name: 'الاسم', value: member.user.displayName, inline: true },
-        { name: 'اليوزر', value: `@${member.user.username}`, inline: true },
-        { name: 'المنشن', value: `${member}`, inline: true }
+        { name: '👤 الاسم', value: member.user.displayName, inline: true },
+        { name: '🏷️ اليوزر', value: `@${member.user.username}`, inline: true },
+        { name: '📋 المنشن', value: `${member}`, inline: true }
       )
       .setTimestamp()
       .setFooter({ text: `User ID: ${member.user.id}` });
@@ -108,14 +109,17 @@ client.on('interactionCreate', async (interaction) => {
   const hasPermission = member.roles.cache.has(ADMIN_ROLE_1) || member.roles.cache.has(ADMIN_ROLE_2);
   
   if (!hasPermission) {
-    return interaction.reply({ content: '❌ ليس لديك صلاحية لاستخدام هذا الزر!', ephemeral: true });
+    return interaction.reply({ content: '❌ ليس لديك صلاحية لاستخدام هذا الزر!', flags: 64 });
   }
+
+  // تأجيل الرد لمنع انتهاء صلاحية الـ interaction
+  await interaction.deferUpdate();
 
   const [action, userId] = interaction.customId.split('_');
   const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
 
   if (!targetMember) {
-    return interaction.reply({ content: '❌ العضو غير موجود في السيرفر!', ephemeral: true });
+    return interaction.followUp({ content: '❌ العضو غير موجود في السيرفر!', flags: 64 });
   }
 
   try {
@@ -150,7 +154,7 @@ client.on('interactionCreate', async (interaction) => {
             .setDisabled(true)
         );
 
-      await interaction.update({ embeds: [updatedEmbed], components: [disabledRow] });
+      await interaction.editReply({ embeds: [updatedEmbed], components: [disabledRow] });
       console.log(`✅ تم قبول طلب التفعيل للعضو: ${targetMember.user.tag}`);
 
     } else if (action === 'reject') {
@@ -181,13 +185,17 @@ client.on('interactionCreate', async (interaction) => {
             .setDisabled(true)
         );
 
-      await interaction.update({ embeds: [updatedEmbed], components: [disabledRow] });
+      await interaction.editReply({ embeds: [updatedEmbed], components: [disabledRow] });
       console.log(`❌ تم رفض طلب التفعيل للعضو: ${targetMember.user.tag}`);
     }
 
   } catch (error) {
     console.error('❌ حدث خطأ:', error);
-    await interaction.reply({ content: '❌ حدث خطأ أثناء معالجة الطلب!', ephemeral: true });
+    try {
+      await interaction.followUp({ content: '❌ حدث خطأ أثناء معالجة الطلب!', flags: 64 });
+    } catch (e) {
+      console.error('❌ خطأ في إرسال رسالة الخطأ:', e);
+    }
   }
 });
 
