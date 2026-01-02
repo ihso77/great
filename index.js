@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -36,10 +36,12 @@ client.on('ready', () => {
 // إرسال رسالة التيكت
 client.on('messageCreate', async (message) => {
   if (message.content === '!setup-ticket' && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    const attachment = new AttachmentBuilder('./man.jpg');
+    
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
       .setDescription('**Ticket Support**')
-      .setImage('https://media.discordapp.net/attachments/1442693525467275317/1456960176977055835/THEGREAT_S.png?ex=67834baa&is=6781fa2a&hm=d85c8ec5dfb0ff9e74c4d4a2e65ec77f75bc47df4a4e7ff1d0d32f8ad7fb5799&=&format=webp&quality=lossless&width=1193&height=671');
+      .setImage('attachment://man.jpg');
 
     const row = new ActionRowBuilder()
       .addComponents(
@@ -49,7 +51,7 @@ client.on('messageCreate', async (message) => {
           .setStyle(ButtonStyle.Secondary)
       );
 
-    await message.channel.send({ embeds: [embed], components: [row] });
+    await message.channel.send({ embeds: [embed], components: [row], files: [attachment] });
     await message.delete();
   }
 });
@@ -171,9 +173,11 @@ client.on('interactionCreate', async (interaction) => {
         ]
       });
 
+      const ticketAttachment = new AttachmentBuilder('./man.jpg');
+      
       const ticketEmbed = new EmbedBuilder()
         .setColor('#FFFFFF')
-        .setImage('https://media.discordapp.net/attachments/1388270792269369464/1456686742860992718/bda3443c9687af01fe9a2f8ba76f669a.webp');
+        .setImage('attachment://man.jpg');
 
       const ticketRow = new ActionRowBuilder()
         .addComponents(
@@ -194,7 +198,8 @@ client.on('interactionCreate', async (interaction) => {
       await ticketChannel.send({ 
         content: `${member}`,
         embeds: [ticketEmbed], 
-        components: [ticketRow] 
+        components: [ticketRow],
+        files: [ticketAttachment]
       });
 
       await interaction.editReply({ content: `✅ تم فتح التيكت الخاص بك ${ticketChannel}`, flags: 64 });
