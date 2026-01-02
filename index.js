@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, REST, Routes, StringSelectMenuBuilder } = require('discord.js');
 const { joinVoiceChannel } = require('@discordjs/voice');
 const fs = require('fs');
 
@@ -24,6 +24,7 @@ const TICKET_MANAGER_ROLE_1 = '1442693522833670326';
 const TICKET_MANAGER_ROLE_2 = '1442693348006695112';
 const TICKET_MANAGER_ROLE_3 = '1442693104267296839';
 const VOICE_DASHBOARD_CHANNEL_ID = '1456741789481435189';
+const TEMP_VOICE_CATEGORY_ID = '1442693890011304080';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 let blockedUsers = {};
@@ -33,9 +34,7 @@ if (fs.existsSync('./block.json')) {
   fs.writeFileSync('./block.json', JSON.stringify({}));
 }
 
-let giveaways = {};
 let tempVoiceChannels = {};
-let fakeParticipants = 0;
 
 function saveBlockedUsers() {
   fs.writeFileSync('./block.json', JSON.stringify(blockedUsers, null, 2));
@@ -50,27 +49,6 @@ client.on('ready', async () => {
   });
   
   console.log('✅ تم تعيين حالة البوت: Watching .gg/408');
-  
-  // تسجيل الأوامر
-  const commands = [
-    {
-      name: 'gstart',
-      description: 'Start a giveaway',
-      options: [
-        { name: 'duration', description: 'Duration (e.g., 1h, 30m, 1d)', type: 3, required: true },
-        { name: 'winners', description: 'Number of winners', type: 4, required: true },
-        { name: 'prize', description: 'Prize description', type: 3, required: true }
-      ]
-    }
-  ];
-
-  const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-  try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('✅ تم تسجيل الأوامر');
-  } catch (error) {
-    console.error('❌ خطأ في تسجيل الأوامر:', error);
-  }
   
   joinVoiceChannelFunc();
   sendVerificationMessage();
@@ -111,7 +89,11 @@ async function setupVoiceDashboard() {
       new ButtonBuilder()
         .setCustomId('create_voice')
         .setLabel('Create Voice')
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('my_voice_settings')
+        .setLabel('My Voice Settings')
+        .setStyle(ButtonStyle.Secondary)
     );
 
   await channel.send({ embeds: [embed], components: [row] });
@@ -200,21 +182,6 @@ client.on('messageCreate', async (message) => {
   // الردود التلقائية
   if (message.content.toLowerCase().includes('السلام عليكم')) {
     return message.reply('و عليكم السلام و الرحمه ارحب منور');
-  }
-
-  // أمر countset
-  if (message.content.startsWith('-countset')) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ هذا الأمر للأدمنز فقط!');
-    }
-
-    const count = parseInt(message.content.split(' ')[1]);
-    if (isNaN(count)) {
-      return message.reply('❌ يجب كتابة رقم صحيح!');
-    }
-
-    fakeParticipants = count;
-    return message.reply(`✅ تم تعيين العدد الوهمي إلى ${count}`);
   }
 
   // أمر الحظر
@@ -324,57 +291,9 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Slash Commands & Interactions
+// Interactions
 client.on('interactionCreate', async (interaction) => {
-  // Slash Commands
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'gstart') {
-      const duration = interaction.options.getString('duration');
-      const winners = interaction.options.getInteger('winners');
-      const prize = interaction.options.getString('prize');
-
-      const timeMs = parseDuration(duration);
-      if (!timeMs) return interaction.reply({ content: '❌ صيغة الوقت خاطئة! استخدم (1h, 30m, 1d)', flags: 64 });
-
-      const endTime = Date.now() + timeMs;
-      const giveawayId = `giveaway_${Date.now()}`;
-
-      giveaways[giveawayId] = {
-        prize,
-        host: interaction.user.id,
-        winners,
-        participants: [],
-        endTime,
-        messageId: null,
-        channelId: interaction.channel.id
-      };
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFFFFF')
-        .setTitle(prize)
-        .addFields(
-          { name: 'من', value: `${interaction.user}`, inline: true },
-          { name: 'الفائزين', value: `${winners}`, inline: true },
-          { name: 'ينتهي', value: `<t:${Math.floor(endTime / 1000)}:R>`, inline: true }
-        );
-
-      const row = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId(`join_${giveawayId}`)
-            .setLabel('مشاركة')
-            .setStyle(ButtonStyle.Primary)
-        );
-
-      const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
-      giveaways[giveawayId].messageId = msg.id;
-
-      setTimeout(() => endGiveaway(giveawayId), timeMs);
-    }
-    return;
-  }
-
-  if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+  if (!interaction.isButton() && !interaction.isModalSubmit() && !interaction.isStringSelectMenu()) return;
 
   // Modal Submissions
   if (interaction.isModalSubmit()) {
@@ -402,6 +321,7 @@ client.on('interactionCreate', async (interaction) => {
         const voiceChannel = await interaction.guild.channels.create({
           name: name,
           type: ChannelType.GuildVoice,
+          parent: TEMP_VOICE_CATEGORY_ID,
           userLimit: limit > 0 ? limit : 0,
           permissionOverwrites: [
             { id: interaction.user.id, allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ManageChannels] }
@@ -426,23 +346,34 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-  // Button Interactions
-  if (interaction.isButton()) {
-    // Giveaway Join
-    if (interaction.customId.startsWith('join_')) {
-      const giveawayId = interaction.customId.replace('join_', '');
-      const giveaway = giveaways[giveawayId];
-      
-      if (!giveaway) return interaction.reply({ content: '❌ القيف غير موجود!', flags: 64 });
-
-      if (giveaway.participants.includes(interaction.user.id)) {
-        return interaction.reply({ content: '✅ أنت مشارك بالفعل!', flags: 64 });
+  // Select Menu
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'kick_member_select') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      if (!userChannel) {
+        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
       }
 
-      giveaway.participants.push(interaction.user.id);
-      return interaction.reply({ content: '✅ تم تسجيلك في القيف!', flags: 64 });
-    }
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+      }
 
+      const targetUserId = interaction.values[0];
+      const member = await interaction.guild.members.fetch(targetUserId);
+      
+      try {
+        await member.voice.disconnect();
+        await interaction.reply({ content: `✅ تم طرد ${member.user.username}!`, flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: '❌ فشل الطرد!', flags: 64 });
+      }
+      return;
+    }
+  }
+
+  // Button Interactions
+  if (interaction.isButton()) {
     // Create Voice
     if (interaction.customId === 'create_voice') {
       const modal = new ModalBuilder()
@@ -468,6 +399,117 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       await interaction.showModal(modal);
+      return;
+    }
+
+    // My Voice Settings
+    if (interaction.customId === 'my_voice_settings') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      
+      if (!userChannel) {
+        return interaction.reply({ content: '❌ ليس لديك روم صوتي حالي!', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        delete tempVoiceChannels[interaction.user.id];
+        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+      }
+
+      const members = Array.from(channel.members.values());
+      const memberList = members.length > 0 
+        ? members.map(m => `• ${m.user.username}`).join('\n')
+        : 'لا يوجد أحد في الروم';
+
+      const embed = new EmbedBuilder()
+        .setTitle('⚙️ إعدادات الروم الصوتي')
+        .setColor('#FFFFFF')
+        .addFields(
+          { name: '🔊 اسم الروم', value: channel.name, inline: true },
+          { name: '👥 عدد الأشخاص', value: `${members.length}`, inline: true },
+          { name: '📋 الأعضاء', value: memberList }
+        );
+
+      const row1 = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_lock')
+            .setLabel('🔒 قفل الروم')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId('voice_unlock')
+            .setLabel('🔓 فتح الروم')
+            .setStyle(ButtonStyle.Success)
+        );
+
+      const components = [row1];
+
+      // إضافة قائمة الطرد إذا كان هناك أعضاء آخرين
+      if (members.length > 1) {
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('kick_member_select')
+          .setPlaceholder('اختر عضو لطرده')
+          .addOptions(
+            members
+              .filter(m => m.user.id !== interaction.user.id)
+              .map(m => ({
+                label: m.user.username,
+                value: m.user.id,
+                description: `طرد ${m.user.username}`
+              }))
+          );
+
+        const row2 = new ActionRowBuilder().addComponents(selectMenu);
+        components.push(row2);
+      }
+
+      await interaction.reply({ embeds: [embed], components, flags: 64 });
+      return;
+    }
+
+    // Voice Lock
+    if (interaction.customId === 'voice_lock') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      if (!userChannel) {
+        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+      }
+
+      try {
+        await channel.permissionOverwrites.edit(interaction.guild.id, {
+          Connect: false
+        });
+        await interaction.reply({ content: '🔒 تم قفل الروم!', flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: '❌ فشل قفل الروم!', flags: 64 });
+      }
+      return;
+    }
+
+    // Voice Unlock
+    if (interaction.customId === 'voice_unlock') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      if (!userChannel) {
+        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+      }
+
+      try {
+        await channel.permissionOverwrites.edit(interaction.guild.id, {
+          Connect: null
+        });
+        await interaction.reply({ content: '🔓 تم فتح الروم!', flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: '❌ فشل فتح الروم!', flags: 64 });
+      }
       return;
     }
 
@@ -609,39 +651,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-function parseDuration(str) {
-  const match = str.match(/^(\d+)(h|m|d|s)$/);
-  if (!match) return null;
-  const value = parseInt(match[1]);
-  const unit = match[2];
-  const multipliers = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
-  return value * multipliers[unit];
-}
-
-async function endGiveaway(giveawayId) {
-  const giveaway = giveaways[giveawayId];
-  if (!giveaway) return;
-
-  const channel = client.channels.cache.get(giveaway.channelId);
-  if (!channel) return;
-
-  if (giveaway.participants.length < giveaway.winners) {
-    await channel.send('❌ لا يوجد مشاركين كافيين في القيف!');
-    delete giveaways[giveawayId];
-    return;
-  }
-
-  const shuffled = [...giveaway.participants].sort(() => Math.random() - 0.5);
-  const winners = shuffled.slice(0, giveaway.winners);
-
-  const embed = new EmbedBuilder()
-    .setColor('#FFFFFF')
-    .setTitle('🎉 انتهى القيف!')
-    .setDescription(`**الجائزة:** ${giveaway.prize}\n**الفائزون:** ${winners.map(w => `<@${w}>`).join(', ')}`);
-
-  await channel.send({ embeds: [embed] });
-  delete giveaways[giveawayId];
-}
-
-client.login(BOT_TOKEN);
-
+client.login(BOT
