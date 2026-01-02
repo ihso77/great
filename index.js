@@ -19,6 +19,17 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 
 client.on('ready', () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
+  
+  // تعيين حالة البوت
+  client.user.setPresence({
+    activities: [{
+      name: '.gg/408',
+      type: 3 // 3 = Watching
+    }],
+    status: 'idle' // idle = أصفر
+  });
+  
+  console.log('✅ تم تعيين حالة البوت: Watching .gg/408');
 });
 
 client.on('messageCreate', async (message) => {
