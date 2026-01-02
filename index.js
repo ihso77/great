@@ -19,9 +19,23 @@ const VERIFIED_ROLE_ID = '1446859259840036924';
 const ADMIN_ROLE_1 = '1455684787804307590';
 const ADMIN_ROLE_2 = '1442691051990024435';
 const TICKET_CATEGORY_ID = '1442694124745523381';
-const TICKET_CHANNEL_ID = 'CHANNEL_ID_HERE'; // ضع هنا آيدي الروم اللي تبي ترسل فيه رسالة التيكت
 const VOICE_CHANNEL_ID = '1454050373332635773';
+const TICKET_MANAGER_ROLE_1 = '1442693522833670326';
+const TICKET_MANAGER_ROLE_2 = '1442693348006695112';
+const TICKET_MANAGER_ROLE_3 = '1442693104267296839';
 const BOT_TOKEN = process.env.BOT_TOKEN;
+
+// تحميل أو إنشاء ملف الحظر
+let blockedUsers = {};
+if (fs.existsSync('./block.json')) {
+  blockedUsers = JSON.parse(fs.readFileSync('./block.json', 'utf8'));
+} else {
+  fs.writeFileSync('./block.json', JSON.stringify({}));
+}
+
+function saveBlockedUsers() {
+  fs.writeFileSync('./block.json', JSON.stringify(blockedUsers, null, 2));
+}
 
 client.on('ready', () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
@@ -58,7 +72,6 @@ function joinVoiceChannelFunc() {
 
     console.log(`✅ تم الدخول للروم الصوتي: ${channel.name}`);
 
-    // إعادة الاتصال في حالة الانقطاع
     connection.on('stateChange', (oldState, newState) => {
       if (newState.status === 'disconnected') {
         console.log('⚠️ تم قطع الاتصال من الروم الصوتي، جاري إعادة الاتصال...');
@@ -70,7 +83,6 @@ function joinVoiceChannelFunc() {
 
   } catch (error) {
     console.error('❌ خطأ في الدخول للروم الصوتي:', error);
-    // إعادة المحاولة بعد 5 ثواني
     setTimeout(() => {
       joinVoiceChannelFunc();
     }, 5000);
@@ -79,9 +91,7 @@ function joinVoiceChannelFunc() {
 
 // مراقبة إذا تم طرد البوت من الروم
 client.on('voiceStateUpdate', (oldState, newState) => {
-  // التحقق إذا كان البوت هو الذي تغيرت حالته
   if (newState.id === client.user.id) {
-    // إذا خرج البوت من الروم الصوتي المحدد
     if (oldState.channelId === VOICE_CHANNEL_ID && newState.channelId !== VOICE_CHANNEL_ID) {
       console.log('⚠️ تم طرد البوت من الروم الصوتي، جاري إعادة الدخول...');
       setTimeout(() => {
@@ -91,7 +101,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
-// إرسال رسالة التيكت
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -137,6 +146,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`✅ تم إلغاء حظر ${mentionedUser} من فتح التيكتات!`);
   }
 
+  // أمر إعداد التيكت
   if (message.content === '!setup-ticket' && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
     const attachment = new AttachmentBuilder('./man.jpg');
     
@@ -155,11 +165,10 @@ client.on('messageCreate', async (message) => {
 
     await message.channel.send({ embeds: [embed], components: [row], files: [attachment] });
     await message.delete();
+    return;
   }
-});
 
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  // نظام التفعيل
   if (message.channel.id !== VERIFICATION_CHANNEL_ID) return;
   if (message.content.trim() !== '.') return;
 
