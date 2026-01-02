@@ -173,7 +173,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const ticketEmbed = new EmbedBuilder()
         .setColor('#FFFFFF')
-        .setImage('https://media.discordapp.net/attachments/1442693525467275317/1456960176977055835/THEGREAT_S.png?ex=67834baa&is=6781fa2a&hm=d85c8ec5dfb0ff9e74c4d4a2e65ec77f75bc47df4a4e7ff1d0d32f8ad7fb5799&=&format=webp&quality=lossless&width=1193&height=671');
+        .setImage('https://media.discordapp.net/attachments/1388270792269369464/1456686742860992718/bda3443c9687af01fe9a2f8ba76f669a.webp');
 
       const ticketRow = new ActionRowBuilder()
         .addComponents(
