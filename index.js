@@ -306,9 +306,9 @@ client.on('interactionCreate', async (interaction) => {
           SendMessages: true,
           ReadMessageHistory: true
         });
-        await interaction.reply({ content: `✅ تم إضافة ${memberToAdd} للتيكت!` });
+        await interaction.reply({ content: `تم إضافة ${memberToAdd} للتيكت`, flags: 64 });
       } catch (error) {
-        await interaction.reply({ content: '❌ فشل! تأكد من الآيدي.', flags: 64 });
+        await interaction.reply({ content: 'فشل، تأكد من الآيدي', flags: 64 });
       }
       return;
     }
@@ -338,9 +338,53 @@ client.on('interactionCreate', async (interaction) => {
           }, 60000)
         };
 
-        await interaction.reply({ content: `✅ تم إنشاء ${voiceChannel}! ادخل خلال دقيقة!`, flags: 64 });
+        await interaction.reply({ content: `تم إنشاء ${voiceChannel}، ادخل خلال دقيقة`, flags: 64 });
       } catch (error) {
-        await interaction.reply({ content: '❌ فشل إنشاء الروم!', flags: 64 });
+        await interaction.reply({ content: 'فشل إنشاء الروم', flags: 64 });
+      }
+      return;
+    }
+
+    if (interaction.customId === 'voice_rename_modal') {
+      const newName = interaction.fields.getTextInputValue('new_voice_name');
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      
+      if (!userChannel) {
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
+      }
+
+      try {
+        await channel.setName(newName);
+        await interaction.reply({ content: `تم تغيير الاسم إلى: ${newName}`, flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: 'فشل تغيير الاسم', flags: 64 });
+      }
+      return;
+    }
+
+    if (interaction.customId === 'voice_limit_modal') {
+      const newLimit = parseInt(interaction.fields.getTextInputValue('new_voice_limit')) || 0;
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      
+      if (!userChannel) {
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
+      }
+
+      try {
+        await channel.setUserLimit(newLimit);
+        await interaction.reply({ content: `تم تغيير الحد إلى: ${newLimit === 0 ? 'بدون حد' : newLimit}`, flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: 'فشل تغيير الحد', flags: 64 });
       }
       return;
     }
@@ -351,12 +395,12 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'kick_member_select') {
       const userChannel = tempVoiceChannels[interaction.user.id];
       if (!userChannel) {
-        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
       }
 
       const channel = interaction.guild.channels.cache.get(userChannel.id);
       if (!channel) {
-        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
       }
 
       const targetUserId = interaction.values[0];
@@ -364,9 +408,9 @@ client.on('interactionCreate', async (interaction) => {
       
       try {
         await member.voice.disconnect();
-        await interaction.reply({ content: `✅ تم طرد ${member.user.username}!`, flags: 64 });
+        await interaction.reply({ content: `تم طرد ${member.user.username}`, flags: 64 });
       } catch (error) {
-        await interaction.reply({ content: '❌ فشل الطرد!', flags: 64 });
+        await interaction.reply({ content: 'فشل الطرد', flags: 64 });
       }
       return;
     }
@@ -407,44 +451,66 @@ client.on('interactionCreate', async (interaction) => {
       const userChannel = tempVoiceChannels[interaction.user.id];
       
       if (!userChannel) {
-        return interaction.reply({ content: '❌ ليس لديك روم صوتي حالي!', flags: 64 });
+        return interaction.reply({ content: 'ليس لديك روم صوتي حالي', flags: 64 });
       }
 
       const channel = interaction.guild.channels.cache.get(userChannel.id);
       if (!channel) {
         delete tempVoiceChannels[interaction.user.id];
-        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
       }
 
       const members = Array.from(channel.members.values());
       const memberList = members.length > 0 
-        ? members.map(m => `• ${m.user.username}`).join('\n')
-        : 'لا يوجد أحد في الروم';
+        ? members.map(m => `${m.user.username}`).join('\n')
+        : 'لا يوجد أحد';
+
+      const isLocked = channel.permissionOverwrites.cache.get(interaction.guild.id)?.deny.has(PermissionFlagsBits.Connect);
 
       const embed = new EmbedBuilder()
-        .setTitle('⚙️ إعدادات الروم الصوتي')
+        .setTitle('Voice Settings')
         .setColor('#FFFFFF')
         .addFields(
-          { name: '🔊 اسم الروم', value: channel.name, inline: true },
-          { name: '👥 عدد الأشخاص', value: `${members.length}`, inline: true },
-          { name: '📋 الأعضاء', value: memberList }
+          { name: 'الاسم', value: channel.name, inline: true },
+          { name: 'الأشخاص', value: `${members.length}/${channel.userLimit || '∞'}`, inline: true },
+          { name: 'الحالة', value: isLocked ? 'مقفل' : 'مفتوح', inline: true },
+          { name: 'الأعضاء', value: memberList }
         );
 
       const row1 = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
             .setCustomId('voice_lock')
-            .setLabel('🔒 قفل الروم')
+            .setLabel('قفل')
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
             .setCustomId('voice_unlock')
-            .setLabel('🔓 فتح الروم')
-            .setStyle(ButtonStyle.Success)
+            .setLabel('فتح')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId('voice_rename')
+            .setLabel('تغيير الاسم')
+            .setStyle(ButtonStyle.Secondary)
         );
 
-      const components = [row1];
+      const row2 = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_limit')
+            .setLabel('تغيير الحد')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId('voice_hide')
+            .setLabel('إخفاء')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId('voice_show')
+            .setLabel('إظهار')
+            .setStyle(ButtonStyle.Secondary)
+        );
 
-      // إضافة قائمة الطرد إذا كان هناك أعضاء آخرين
+      const components = [row1, row2];
+
       if (members.length > 1) {
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId('kick_member_select')
@@ -459,8 +525,8 @@ client.on('interactionCreate', async (interaction) => {
               }))
           );
 
-        const row2 = new ActionRowBuilder().addComponents(selectMenu);
-        components.push(row2);
+        const row3 = new ActionRowBuilder().addComponents(selectMenu);
+        components.push(row3);
       }
 
       await interaction.reply({ embeds: [embed], components, flags: 64 });
@@ -471,21 +537,21 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'voice_lock') {
       const userChannel = tempVoiceChannels[interaction.user.id];
       if (!userChannel) {
-        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
       }
 
       const channel = interaction.guild.channels.cache.get(userChannel.id);
       if (!channel) {
-        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
       }
 
       try {
         await channel.permissionOverwrites.edit(interaction.guild.id, {
           Connect: false
         });
-        await interaction.reply({ content: '🔒 تم قفل الروم!', flags: 64 });
+        await interaction.reply({ content: 'تم قفل الروم', flags: 64 });
       } catch (error) {
-        await interaction.reply({ content: '❌ فشل قفل الروم!', flags: 64 });
+        await interaction.reply({ content: 'فشل قفل الروم', flags: 64 });
       }
       return;
     }
@@ -494,21 +560,102 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'voice_unlock') {
       const userChannel = tempVoiceChannels[interaction.user.id];
       if (!userChannel) {
-        return interaction.reply({ content: '❌ ليس لديك روم صوتي!', flags: 64 });
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
       }
 
       const channel = interaction.guild.channels.cache.get(userChannel.id);
       if (!channel) {
-        return interaction.reply({ content: '❌ الروم غير موجود!', flags: 64 });
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
       }
 
       try {
         await channel.permissionOverwrites.edit(interaction.guild.id, {
           Connect: null
         });
-        await interaction.reply({ content: '🔓 تم فتح الروم!', flags: 64 });
+        await interaction.reply({ content: 'تم فتح الروم', flags: 64 });
       } catch (error) {
-        await interaction.reply({ content: '❌ فشل فتح الروم!', flags: 64 });
+        await interaction.reply({ content: 'فشل فتح الروم', flags: 64 });
+      }
+      return;
+    }
+
+    // Voice Rename
+    if (interaction.customId === 'voice_rename') {
+      const modal = new ModalBuilder()
+        .setCustomId('voice_rename_modal')
+        .setTitle('تغيير اسم الروم');
+
+      const nameInput = new TextInputBuilder()
+        .setCustomId('new_voice_name')
+        .setLabel('الاسم الجديد')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // Voice Limit
+    if (interaction.customId === 'voice_limit') {
+      const modal = new ModalBuilder()
+        .setCustomId('voice_limit_modal')
+        .setTitle('تغيير حد الأشخاص');
+
+      const limitInput = new TextInputBuilder()
+        .setCustomId('new_voice_limit')
+        .setLabel('الحد الجديد (0 = بدون حد)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('0')
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(limitInput));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // Voice Hide
+    if (interaction.customId === 'voice_hide') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      if (!userChannel) {
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
+      }
+
+      try {
+        await channel.permissionOverwrites.edit(interaction.guild.id, {
+          ViewChannel: false
+        });
+        await interaction.reply({ content: 'تم إخفاء الروم', flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: 'فشل إخفاء الروم', flags: 64 });
+      }
+      return;
+    }
+
+    // Voice Show
+    if (interaction.customId === 'voice_show') {
+      const userChannel = tempVoiceChannels[interaction.user.id];
+      if (!userChannel) {
+        return interaction.reply({ content: 'ليس لديك روم صوتي', flags: 64 });
+      }
+
+      const channel = interaction.guild.channels.cache.get(userChannel.id);
+      if (!channel) {
+        return interaction.reply({ content: 'الروم غير موجود', flags: 64 });
+      }
+
+      try {
+        await channel.permissionOverwrites.edit(interaction.guild.id, {
+          ViewChannel: null
+        });
+        await interaction.reply({ content: 'تم إظهار الروم', flags: 64 });
+      } catch (error) {
+        await interaction.reply({ content: 'فشل إظهار الروم', flags: 64 });
       }
       return;
     }
