@@ -40,7 +40,7 @@ client.on('messageCreate', async (message) => {
     
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setDescription('**Ticket Support**')
+      .setDescription('**d3m Support**')
       .setImage('attachment://man.jpg');
 
     const row = new ActionRowBuilder()
@@ -375,3 +375,4 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(BOT_TOKEN);
+
