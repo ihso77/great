@@ -1,12 +1,15 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder } = require('discord.js');
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
+const fs = require('fs');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
@@ -17,6 +20,7 @@ const ADMIN_ROLE_1 = '1455684787804307590';
 const ADMIN_ROLE_2 = '1442691051990024435';
 const TICKET_CATEGORY_ID = '1442694124745523381';
 const TICKET_CHANNEL_ID = 'CHANNEL_ID_HERE'; // ضع هنا آيدي الروم اللي تبي ترسل فيه رسالة التيكت
+const VOICE_CHANNEL_ID = '1454050373332635773';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 client.on('ready', () => {
@@ -31,16 +35,114 @@ client.on('ready', () => {
   });
   
   console.log('✅ تم تعيين حالة البوت: Watching .gg/408');
+  
+  // الدخول للروم الصوتي
+  joinVoiceChannelFunc();
+});
+
+function joinVoiceChannelFunc() {
+  try {
+    const channel = client.channels.cache.get(VOICE_CHANNEL_ID);
+    if (!channel) {
+      console.error('❌ الروم الصوتي غير موجود!');
+      return;
+    }
+
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false,
+      selfMute: false
+    });
+
+    console.log(`✅ تم الدخول للروم الصوتي: ${channel.name}`);
+
+    // إعادة الاتصال في حالة الانقطاع
+    connection.on('stateChange', (oldState, newState) => {
+      if (newState.status === 'disconnected') {
+        console.log('⚠️ تم قطع الاتصال من الروم الصوتي، جاري إعادة الاتصال...');
+        setTimeout(() => {
+          joinVoiceChannelFunc();
+        }, 3000);
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ خطأ في الدخول للروم الصوتي:', error);
+    // إعادة المحاولة بعد 5 ثواني
+    setTimeout(() => {
+      joinVoiceChannelFunc();
+    }, 5000);
+  }
+}
+
+// مراقبة إذا تم طرد البوت من الروم
+client.on('voiceStateUpdate', (oldState, newState) => {
+  // التحقق إذا كان البوت هو الذي تغيرت حالته
+  if (newState.id === client.user.id) {
+    // إذا خرج البوت من الروم الصوتي المحدد
+    if (oldState.channelId === VOICE_CHANNEL_ID && newState.channelId !== VOICE_CHANNEL_ID) {
+      console.log('⚠️ تم طرد البوت من الروم الصوتي، جاري إعادة الدخول...');
+      setTimeout(() => {
+        joinVoiceChannelFunc();
+      }, 2000);
+    }
+  }
 });
 
 // إرسال رسالة التيكت
 client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  // أمر الحظر
+  if (message.content.startsWith('-block')) {
+    const hasPermission = message.member.roles.cache.has(ADMIN_ROLE_1) || message.member.roles.cache.has(ADMIN_ROLE_2);
+    
+    if (!hasPermission) {
+      return message.reply('❌ ليس لديك صلاحية لاستخدام هذا الأمر!');
+    }
+
+    const mentionedUser = message.mentions.users.first();
+    if (!mentionedUser) {
+      return message.reply('❌ يجب عليك منشن الشخص! مثال: `-block @user`');
+    }
+
+    blockedUsers[mentionedUser.id] = true;
+    saveBlockedUsers();
+    
+    return message.reply(`✅ تم حظر ${mentionedUser} من فتح التيكتات!`);
+  }
+
+  // أمر إلغاء الحظر
+  if (message.content.startsWith('-unblock')) {
+    const hasPermission = message.member.roles.cache.has(ADMIN_ROLE_1) || message.member.roles.cache.has(ADMIN_ROLE_2);
+    
+    if (!hasPermission) {
+      return message.reply('❌ ليس لديك صلاحية لاستخدام هذا الأمر!');
+    }
+
+    const mentionedUser = message.mentions.users.first();
+    if (!mentionedUser) {
+      return message.reply('❌ يجب عليك منشن الشخص! مثال: `-unblock @user`');
+    }
+
+    if (!blockedUsers[mentionedUser.id]) {
+      return message.reply('❌ هذا الشخص غير محظور!');
+    }
+
+    delete blockedUsers[mentionedUser.id];
+    saveBlockedUsers();
+    
+    return message.reply(`✅ تم إلغاء حظر ${mentionedUser} من فتح التيكتات!`);
+  }
+
   if (message.content === '!setup-ticket' && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
     const attachment = new AttachmentBuilder('./man.jpg');
     
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setDescription('**d3m Support**')
+      .setDescription('**Ticket Support**')
       .setImage('attachment://man.jpg');
 
     const row = new ActionRowBuilder()
@@ -139,6 +241,11 @@ client.on('interactionCreate', async (interaction) => {
       const guild = interaction.guild;
       const member = interaction.member;
       
+      // التحقق من الحظر
+      if (blockedUsers[member.id]) {
+        return interaction.editReply({ content: '❌ أنت محظور من فتح التيكتات!', flags: 64 });
+      }
+      
       // التحقق من وجود تيكت مفتوح بالفعل
       const existingTicket = guild.channels.cache.find(
         ch => ch.name === `${member.user.username}-ticket` && ch.parentId === TICKET_CATEGORY_ID
@@ -168,6 +275,18 @@ client.on('interactionCreate', async (interaction) => {
           },
           {
             id: ADMIN_ROLE_2,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+          },
+          {
+            id: TICKET_MANAGER_ROLE_1,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+          },
+          {
+            id: TICKET_MANAGER_ROLE_2,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+          },
+          {
+            id: TICKET_MANAGER_ROLE_3,
             allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
           }
         ]
@@ -214,7 +333,11 @@ client.on('interactionCreate', async (interaction) => {
   // معالجة أزرار التيكت
   if (interaction.customId === 'close_ticket') {
     const member = interaction.member;
-    const hasPermission = member.roles.cache.has(ADMIN_ROLE_1) || member.roles.cache.has(ADMIN_ROLE_2);
+    const hasPermission = member.roles.cache.has(ADMIN_ROLE_1) || 
+                         member.roles.cache.has(ADMIN_ROLE_2) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_1) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_2) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_3);
     
     if (!hasPermission) {
       return interaction.reply({ content: '❌ ليس لديك صلاحية لإغلاق التيكت!', flags: 64 });
@@ -230,7 +353,11 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.customId === 'add_member') {
     const member = interaction.member;
-    const hasPermission = member.roles.cache.has(ADMIN_ROLE_1) || member.roles.cache.has(ADMIN_ROLE_2);
+    const hasPermission = member.roles.cache.has(ADMIN_ROLE_1) || 
+                         member.roles.cache.has(ADMIN_ROLE_2) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_1) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_2) ||
+                         member.roles.cache.has(TICKET_MANAGER_ROLE_3);
     
     if (!hasPermission) {
       return interaction.reply({ content: '❌ ليس لديك صلاحية لإضافة أعضاء!', flags: 64 });
@@ -375,4 +502,3 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(BOT_TOKEN);
-
